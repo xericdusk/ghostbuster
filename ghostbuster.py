@@ -72,8 +72,18 @@ data = pd.DataFrame(st.session_state.history)
 
 # --------- MAP DISPLAY ---------
 st.subheader("📡 Signal Strength Map")
-map_center = [lat, lon]
-m = folium.Map(location=map_center, zoom_start=16)
+
+# Initialize map in session state if not already present
+if "map" not in st.session_state:
+    map_center = [lat, lon]
+    st.session_state["map"] = folium.Map(location=map_center, zoom_start=16)
+
+# Use the existing map object
+m = st.session_state["map"]
+
+# Clear previous markers to avoid duplication (optional, depending on your needs)
+# If you want to keep all historical markers, skip this step
+m._children.clear()
 
 # SUV icon
 suv_icon_url = "https://cdn-icons-png.flaticon.com/512/743/743920.png"
@@ -93,7 +103,8 @@ for _, row in data.iterrows():
         fill_opacity=0.6
     ).add_to(m)
 
-st_folium(m, height=500)
+# Render the map
+st_folium(m, height=500, key="map_display")
 
 # --------- OPENAI LLM ANALYSIS ---------
 st.subheader("🤖 LLM Signal Recommendations")
