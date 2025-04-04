@@ -3,3 +3,5 @@ streamlit-folium
 openai
 pandas
 folium
+streamlit_js_eval
+
