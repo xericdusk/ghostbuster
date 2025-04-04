@@ -31,7 +31,7 @@ chase_mode = st.sidebar.button("🚗 Engage Chase Mode")
 
 st.sidebar.markdown("---")
 
-# --------- LOCATION (No Blinking, Proper JS Eval) ---------
+# --------- LOCATION ---------
 st.subheader("📍 Current Position & Heading")
 location = streamlit_js_eval(
     js_expressions="navigator.geolocation.getCurrentPosition((pos) => ({lat: pos.coords.latitude, lon: pos.coords.longitude}))",
@@ -66,45 +66,55 @@ current_entry = {
     'rssi': rssi,
     'time': datetime.datetime.now().isoformat()
 }
-
 st.session_state.history.append(current_entry)
 data = pd.DataFrame(st.session_state.history)
 
 # --------- MAP DISPLAY ---------
 st.subheader("📡 Signal Strength Map")
 
-# Initialize map in session state if not already present
-if "map" not in st.session_state:
-    map_center = [lat, lon]
-    st.session_state["map"] = folium.Map(location=map_center, zoom_start=16)
+# Cache the map object to prevent reinitialization
+@st.cache_resource
+def get_base_map(lat, lon):
+    return folium.Map(location=[lat, lon], zoom_start=16)
 
-# Use the existing map object
+# Initialize or retrieve the map
+if "map_initialized" not in st.session_state:
+    st.session_state["map"] = get_base_map(lat, lon)
+    st.session_state["map_initialized"] = True
+    st.session_state["last_markers"] = set()  # Track markers to avoid duplicates
+
 m = st.session_state["map"]
-
-# Clear previous markers to avoid duplication (optional, depending on your needs)
-# If you want to keep all historical markers, skip this step
-m._children.clear()
 
 # SUV icon
 suv_icon_url = "https://cdn-icons-png.flaticon.com/512/743/743920.png"
-folium.Marker(
-    location=[lat, lon],
-    icon=folium.CustomIcon(suv_icon_url, icon_size=(30, 30)),
-    popup="Your Location"
-).add_to(m)
-
-for _, row in data.iterrows():
-    color = "green" if row.rssi > -50 else "orange" if row.rssi > -60 else "red"
-    folium.Circle(
-        location=[row.lat, row.lon],
-        radius=6,
-        color=color,
-        fill=True,
-        fill_opacity=0.6
+suv_key = f"suv_{lat}_{lon}"  # Unique key for the SUV marker
+if suv_key not in st.session_state["last_markers"]:
+    folium.Marker(
+        location=[lat, lon],
+        icon=folium.CustomIcon(suv_icon_url, icon_size=(30, 30)),
+        popup="Your Location"
     ).add_to(m)
+    st.session_state["last_markers"].add(suv_key)
 
-# Render the map
-st_folium(m, height=500, key="map_display")
+# Add signal strength circles, avoiding duplicates
+for _, row in data.iterrows():
+    marker_key = f"circle_{row.lat}_{row.lon}_{row.rssi}"
+    if marker_key not in st.session_state["last_markers"]:
+        color = "green" if row.rssi > -50 else "orange" if row.rssi > -60 else "red"
+        folium.Circle(
+            location=[row.lat, row.lon],
+            radius=6,
+            color=color,
+            fill=True,
+            fill_opacity=0.6
+        ).add_to(m)
+        st.session_state["last_markers"].add(marker_key)
+
+# Render the map with a fixed key to minimize re-rendering
+map_output = st_folium(m, height=500, width=700, key="stable_map")
+
+# Debug info
+st.write(f"Map center: {m.location}, Markers: {len(st.session_state['last_markers'])}")
 
 # --------- OPENAI LLM ANALYSIS ---------
 st.subheader("🤖 LLM Signal Recommendations")
