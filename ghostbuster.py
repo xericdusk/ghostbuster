@@ -62,7 +62,7 @@ components.html("""
 </script>
 """, height=0)
 
-location_update = st.experimental_get_query_params().get("location_update")
+location_update = st.query_params.get("location_update")
 
 if location_update:
     try:
