@@ -7,7 +7,7 @@ import openai
 import base64
 import os
 import subprocess
-import json
+import numpy as np
 
 # --------- SETTINGS ---------
 LOG_DIR = "logs"
@@ -33,69 +33,59 @@ st.sidebar.markdown("---")
 # --------- LOCATION AND COMPASS (FROM BROWSER) ---------
 st.subheader("📍 Current Position & Heading")
 
-st.markdown("""
-<script>
-function sendPosition() {
-    navigator.geolocation.getCurrentPosition(pos => {
-        const coords = {
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude,
-            heading: pos.coords.heading || 0
-        }
-        fetch("/location", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify(coords)
-        });
-    });
-}
-setInterval(sendPosition, 5000);
-</script>
-""", unsafe_allow_html=True)
-
-# Mock/fallback location for desktop use
 lat = st.session_state.get("lat", 36.8529)
 lon = st.session_state.get("lon", -75.9780)
 heading = st.session_state.get("heading", 0)
 
-# Display current location info
 st.write(f"Latitude: {lat:.5f}")
 st.write(f"Longitude: {lon:.5f}")
 st.write(f"Heading: {heading:.1f}°")
 
-# --------- HACKRF SIGNAL STRENGTH ---------
-def get_rssi(frequency_mhz):
+# --------- HACKRF SIGNAL STRENGTH (Simulated) ---------
+def get_rssi_from_hackrf(freq_mhz):
     try:
-        # Replace this with real logic for your HackRF signal strength measurement
-        # This example simulates RSSI
-        return -50 + (frequency_mhz % 10)  # fake signal value
+        # Simulated RSSI value based on frequency (replace with actual logic)
+        return -60 + int(freq_mhz) % 5
     except Exception as e:
-        st.error(f"Error reading HackRF: {e}")
-        return None
+        st.error(f"HackRF RSSI Error: {e}")
+        return -100
 
-rssi = get_rssi(frequency)
+rssi = get_rssi_from_hackrf(frequency)
 
 # --------- DATA LOGGING ---------
-data = pd.DataFrame({
-    'lat': [lat],
-    'lon': [lon],
-    'rssi': [rssi],
-    'time': [datetime.datetime.now().isoformat()]
-})
+st.session_state.setdefault("history", [])
+current_entry = {
+    'lat': lat,
+    'lon': lon,
+    'rssi': rssi,
+    'time': datetime.datetime.now().isoformat()
+}
+
+st.session_state.history.append(current_entry)
+data = pd.DataFrame(st.session_state.history)
 
 # --------- MAP DISPLAY ---------
 st.subheader("📡 Signal Strength Map")
-map_center = [data['lat'].mean(), data['lon'].mean()]
+map_center = [lat, lon]
 m = folium.Map(location=map_center, zoom_start=16)
 
+# Add SUV Icon for current position
+icon_url = "https://cdn-icons-png.flaticon.com/512/685/685655.png"
+folium.Marker(
+    location=[lat, lon],
+    icon=folium.CustomIcon(icon_url, icon_size=(30, 30)),
+    popup="Your Location"
+).add_to(m)
+
+# Plot RSSI trail
 for _, row in data.iterrows():
     color = "green" if row.rssi > -50 else "orange" if row.rssi > -60 else "red"
     folium.Circle(
         location=[row.lat, row.lon],
-        radius=8,
+        radius=6,
         color=color,
         fill=True,
-        fill_opacity=0.7
+        fill_opacity=0.6
     ).add_to(m)
 
 st_folium(m, height=500)
@@ -116,31 +106,36 @@ if st.button("🔍 Analyze Signals with LLM"):
 # --------- OPENAI TTS ---------
 st.subheader("🗣️ Voice Guidance")
 def speak(text):
-    audio_response = client.audio.speech.create(
-        model="tts-1",
-        voice="nova",
-        input=text
-    )
-    audio_path = "tts_output.mp3"
-    with open(audio_path, "wb") as f:
-        f.write(audio_response.content)
-    with open(audio_path, "rb") as audio_file:
-        audio_bytes = audio_file.read()
-        st.audio(audio_bytes, format="audio/mp3")
+    try:
+        audio_response = client.audio.speech.create(
+            model="tts-1",
+            voice="nova",
+            input=text
+        )
+        audio_path = "tts_output.mp3"
+        with open(audio_path, "wb") as f:
+            f.write(audio_response.content)
+        with open(audio_path, "rb") as audio_file:
+            audio_bytes = audio_file.read()
+            st.audio(audio_bytes, format="audio/mp3")
+    except Exception as e:
+        st.error(f"TTS Error: {e}")
 
 if st.button("📢 Say Recommendation"):
     speak("Signal at 433 megahertz is strongest. Recommend driving north for better bearing.")
 
 # --------- IQ Recording ---------
-if chase_mode and iq_record:
-    st.info(f"Recording IQ samples at {frequency} MHz...")
-    iq_path = os.path.join(IQ_DIR, f"{frequency}MHz_{datetime.datetime.now().isoformat()}.iq")
-    try:
-        subprocess.Popen(["hackrf_transfer", "-r", iq_path, "-f", str(int(frequency * 1e6)), "-n", "10000000"])
-        st.success(f"Recording started: {iq_path}")
-    except Exception as e:
-        st.error(f"HackRF error: {e}")
+if chase_mode:
+    st.success("🚗 Chase Mode Activated! Logging movement + signal...")
+    if iq_record:
+        st.info(f"Recording IQ samples at {frequency} MHz...")
+        iq_path = os.path.join(IQ_DIR, f"{frequency}MHz_{datetime.datetime.now().isoformat()}.iq")
+        try:
+            subprocess.Popen(["hackrf_transfer", "-r", iq_path, "-f", str(int(frequency * 1e6)), "-n", "10000000"])
+            st.success(f"Recording started: {iq_path}")
+        except Exception as e:
+            st.error(f"HackRF error: {e}")
 
 # --------- FOOTER ---------
 st.markdown("---")
-st.caption("Ghostbuster v0.2 – Live GPS, Compass & HackRF integration 🚗")
+st.caption("Ghostbuster v0.3 – Real-time DF, GPS, HackRF, TTS 🚙")
