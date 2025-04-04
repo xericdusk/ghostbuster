@@ -33,6 +33,33 @@ st.sidebar.markdown("---")
 # --------- LOCATION AND COMPASS (FROM BROWSER) ---------
 st.subheader("📍 Current Position & Heading")
 
+# JavaScript to get location from browser
+st.components.v1.html("""
+<script>
+navigator.geolocation.getCurrentPosition(
+    function(position) {
+        const coords = position.coords;
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "location";
+        input.value = `${coords.latitude},${coords.longitude}`;
+        document.body.appendChild(input);
+        document.forms[0].submit();
+    }
+);
+</script>
+""", height=0)
+
+if "location" in st.query_params:
+    try:
+        coords = st.query_params["location"][0].split(',')
+        lat = float(coords[0])
+        lon = float(coords[1])
+        st.session_state["lat"] = lat
+        st.session_state["lon"] = lon
+    except:
+        st.warning("Unable to parse browser location.")
+
 lat = st.session_state.get("lat", 36.8529)
 lon = st.session_state.get("lon", -75.9780)
 heading = st.session_state.get("heading", 0)
@@ -44,7 +71,6 @@ st.write(f"Heading: {heading:.1f}°")
 # --------- HACKRF SIGNAL STRENGTH (Simulated) ---------
 def get_rssi_from_hackrf(freq_mhz):
     try:
-        # Simulated RSSI value based on frequency (replace with actual logic)
         return -60 + int(freq_mhz) % 5
     except Exception as e:
         st.error(f"HackRF RSSI Error: {e}")
@@ -69,15 +95,14 @@ st.subheader("📡 Signal Strength Map")
 map_center = [lat, lon]
 m = folium.Map(location=map_center, zoom_start=16)
 
-# Add SUV Icon for current position
-icon_url = "https://cdn-icons-png.flaticon.com/512/685/685655.png"
+# Valid SUV icon fallback (local or CDN with correct format)
+suv_icon_url = "https://cdn-icons-png.flaticon.com/512/743/743920.png"
 folium.Marker(
     location=[lat, lon],
-    icon=folium.CustomIcon(icon_url, icon_size=(30, 30)),
+    icon=folium.CustomIcon(suv_icon_url, icon_size=(30, 30)),
     popup="Your Location"
 ).add_to(m)
 
-# Plot RSSI trail
 for _, row in data.iterrows():
     color = "green" if row.rssi > -50 else "orange" if row.rssi > -60 else "red"
     folium.Circle(
