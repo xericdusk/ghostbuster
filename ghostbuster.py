@@ -8,7 +8,7 @@ import base64
 import os
 import subprocess
 import numpy as np
-import streamlit.components.v1 as components
+from streamlit_js_eval import streamlit_js_eval
 
 # --------- SETTINGS ---------
 LOG_DIR = "logs"
@@ -31,49 +31,19 @@ chase_mode = st.sidebar.button("🚗 Engage Chase Mode")
 
 st.sidebar.markdown("---")
 
-# --------- LOCATION (Using JS watchPosition without reruns) ---------
+# --------- LOCATION (No Blinking, Proper JS Eval) ---------
 st.subheader("📍 Current Position & Heading")
+location = streamlit_js_eval(
+    js_expressions="navigator.geolocation.getCurrentPosition((pos) => ({lat: pos.coords.latitude, lon: pos.coords.longitude}))",
+    key="get_browser_location"
+)
 
-if "lat" not in st.session_state:
-    st.session_state["lat"] = 36.8529
-if "lon" not in st.session_state:
-    st.session_state["lon"] = -75.9780
+if location and isinstance(location, dict) and "lat" in location:
+    st.session_state["lat"] = location["lat"]
+    st.session_state["lon"] = location["lon"]
 
-components.html("""
-<script>
-  const sendLocation = (lat, lon) => {
-    const streamlitInput = window.parent.document.querySelector("iframe").contentWindow;
-    streamlitInput.postMessage({
-      isStreamlitMessage: true,
-      type: "streamlit:setComponentValue",
-      key: "location_update",
-      value: JSON.stringify({ lat: lat, lon: lon }),
-      fromPython: false
-    }, "*");
-  };
-  
-  navigator.geolocation.watchPosition(
-    (position) => {
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
-      sendLocation(lat, lon);
-    }
-  );
-</script>
-""", height=0)
-
-location_update = st.query_params.get("location_update")
-
-if location_update:
-    try:
-        coords = eval(location_update[0])
-        st.session_state["lat"] = coords["lat"]
-        st.session_state["lon"] = coords["lon"]
-    except:
-        pass
-
-lat = st.session_state["lat"]
-lon = st.session_state["lon"]
+lat = st.session_state.get("lat", 36.8529)
+lon = st.session_state.get("lon", -75.9780)
 heading = st.session_state.get("heading", 0)
 
 st.write(f"Latitude: {lat:.5f}, Longitude: {lon:.5f}, Heading: {heading:.1f}°")
