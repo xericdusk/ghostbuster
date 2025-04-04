@@ -8,7 +8,7 @@ import base64
 import os
 import subprocess
 import numpy as np
-import streamlit.components.v1 as components
+from streamlit_js_eval import streamlit_js_eval
 
 # --------- SETTINGS ---------
 LOG_DIR = "logs"
@@ -31,35 +31,19 @@ chase_mode = st.sidebar.button("🚗 Engage Chase Mode")
 
 st.sidebar.markdown("---")
 
-# --------- LOCATION (USING JS TO UPDATE SESSION) ---------
+# --------- LOCATION (NO BLINKING) ---------
 st.subheader("📍 Current Position & Heading")
-location_placeholder = st.empty()
+location = streamlit_js_eval(js_expressions="navigator.geolocation.getCurrentPosition", key="get_location")
 
-components.html("""
-<script>
-const streamlitDoc = window.parent.document;
-navigator.geolocation.getCurrentPosition(
-    (position) => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        streamlitDoc.dispatchEvent(new CustomEvent("streamlit:location", {
-            detail: {lat: lat, lon: lon}
-        }));
-    }
-);
-</script>
-""", height=0)
+if location and "coords" in location:
+    st.session_state["lat"] = location["coords"]["latitude"]
+    st.session_state["lon"] = location["coords"]["longitude"]
 
-# Default fallback location
-if "lat" not in st.session_state:
-    st.session_state["lat"] = 36.8529
-    st.session_state["lon"] = -75.9780
-
-lat = st.session_state["lat"]
-lon = st.session_state["lon"]
+lat = st.session_state.get("lat", 36.8529)
+lon = st.session_state.get("lon", -75.9780)
 heading = st.session_state.get("heading", 0)
 
-location_placeholder.write(f"Latitude: {lat:.5f}, Longitude: {lon:.5f}, Heading: {heading:.1f}°")
+st.write(f"Latitude: {lat:.5f}, Longitude: {lon:.5f}, Heading: {heading:.1f}°")
 
 # --------- HACKRF SIGNAL STRENGTH (Simulated) ---------
 def get_rssi_from_hackrf(freq_mhz):
