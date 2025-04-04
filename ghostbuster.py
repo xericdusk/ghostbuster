@@ -8,6 +8,7 @@ import base64
 import os
 import subprocess
 import numpy as np
+import streamlit.components.v1 as components
 
 # --------- SETTINGS ---------
 LOG_DIR = "logs"
@@ -30,43 +31,35 @@ chase_mode = st.sidebar.button("🚗 Engage Chase Mode")
 
 st.sidebar.markdown("---")
 
-# --------- LOCATION AND COMPASS (FROM BROWSER) ---------
+# --------- LOCATION (USING JS TO UPDATE SESSION) ---------
 st.subheader("📍 Current Position & Heading")
+location_placeholder = st.empty()
 
-# JavaScript to get location from browser
-st.components.v1.html("""
+components.html("""
 <script>
+const streamlitDoc = window.parent.document;
 navigator.geolocation.getCurrentPosition(
-    function(position) {
-        const coords = position.coords;
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = "location";
-        input.value = `${coords.latitude},${coords.longitude}`;
-        document.body.appendChild(input);
-        document.forms[0].submit();
+    (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        streamlitDoc.dispatchEvent(new CustomEvent("streamlit:location", {
+            detail: {lat: lat, lon: lon}
+        }));
     }
 );
 </script>
 """, height=0)
 
-if "location" in st.query_params:
-    try:
-        coords = st.query_params["location"][0].split(',')
-        lat = float(coords[0])
-        lon = float(coords[1])
-        st.session_state["lat"] = lat
-        st.session_state["lon"] = lon
-    except:
-        st.warning("Unable to parse browser location.")
+# Default fallback location
+if "lat" not in st.session_state:
+    st.session_state["lat"] = 36.8529
+    st.session_state["lon"] = -75.9780
 
-lat = st.session_state.get("lat", 36.8529)
-lon = st.session_state.get("lon", -75.9780)
+lat = st.session_state["lat"]
+lon = st.session_state["lon"]
 heading = st.session_state.get("heading", 0)
 
-st.write(f"Latitude: {lat:.5f}")
-st.write(f"Longitude: {lon:.5f}")
-st.write(f"Heading: {heading:.1f}°")
+location_placeholder.write(f"Latitude: {lat:.5f}, Longitude: {lon:.5f}, Heading: {heading:.1f}°")
 
 # --------- HACKRF SIGNAL STRENGTH (Simulated) ---------
 def get_rssi_from_hackrf(freq_mhz):
@@ -95,7 +88,7 @@ st.subheader("📡 Signal Strength Map")
 map_center = [lat, lon]
 m = folium.Map(location=map_center, zoom_start=16)
 
-# Valid SUV icon fallback (local or CDN with correct format)
+# SUV icon
 suv_icon_url = "https://cdn-icons-png.flaticon.com/512/743/743920.png"
 folium.Marker(
     location=[lat, lon],
